@@ -1,5 +1,8 @@
-numpy>=1.17.0
-scipy>=0.16.0
-Cython>=0.24.0
-tqdm>=4.27.0
-threadpoolctl
+numpy==1.26.4
+scipy==1.11.4
+Cython==3.0.10
+scikit-build==0.17.6
+cmake==3.28.1
+ninja==1.11.1
+tqdm==4.66.2
+threadpoolctl==3.4.0

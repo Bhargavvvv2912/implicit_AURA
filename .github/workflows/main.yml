@@ -1,0 +1,79 @@
+name: AURA Experiment - Implicit (Repo 29)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  modernize-implicit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 🛠️ Setup Host Build Tools
+        # Implicit requires a C++ compiler and CMake/Ninja to build its kernels
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build
+          pip install --upgrade pip
+          pip install google-genai google-api-core pypi-simple packaging pip-tools
+          # Pre-injecting build foundation for the agent's nested venvs
+          pip install numpy==1.26.4 Cython cmake ninja setuptools
+
+      - name: 🧪 1. Run Pip Baseline
+        run: |
+          python -m venv baseline_env
+          ./baseline_env/bin/pip install --upgrade pip
+          ./baseline_env/bin/pip install -r requirements.txt
+          ./baseline_env/bin/pip install -e .
+          ./baseline_env/bin/python validation_implicit.py
+
+      - name: 💥 2. Run Pip Upgrade (Modernization Attack)
+        continue-on-error: true
+        run: |
+          python -m venv upgrade_env
+          ./upgrade_env/bin/pip install --upgrade pip
+          # This forces modern NumPy 2.x and SciPy 1.15+, which triggers binary drift
+          ./upgrade_env/bin/pip install -r primary_requirements.txt
+          ./upgrade_env/bin/pip install -e .
+          ./upgrade_env/bin/python validation_implicit.py
+
+      - name: 🤖 3. Run AURA Agent
+        run: |
+          # Create agent environment with system access to find the host tools
+          python -m venv --system-site-packages aura_env
+          ./aura_env/bin/pip install google-genai google-api-core pypi-simple packaging pip-tools
+          
+          # Force the agent's subprocesses to see the foundation tools via PYTHONPATH
+          export PYTHONPATH=$PYTHONPATH:$(python -c "import site; print(site.getsitepackages()[0])")
+          
+          # Run the agent
+          ./aura_env/bin/python -u dependency_agent.py | tee aura_implicit_execution.log
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+
+      - name: 📝 Save Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aura-implicit-log
+          path: aura_implicit_execution.log
+
+      - name: 💾 Commit Final Results
+        if: always()
+        run: |
+          git config --global user.name 'AURA Agent'
+          git config --global user.email 'aura-agent@users.noreply.github.com'
+          git add requirements.txt aura_implicit_execution.log
+          if ! git diff --staged --quiet; then
+            git commit -m "🤖 [ASE-2026] Modernized Implicit: Resolved C++/Cython ABI Drift [skip ci]"
+            git push
+          fi
