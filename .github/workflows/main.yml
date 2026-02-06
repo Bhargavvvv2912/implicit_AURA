@@ -31,9 +31,10 @@ jobs:
       - name: 🧪 1. Run Pip Baseline
         run: |
           python -m venv baseline_env
-          ./baseline_env/bin/pip install --upgrade pip
           ./baseline_env/bin/pip install -r requirements.txt
-          ./baseline_env/bin/pip install -v -e .
+          # Force the binaries to be created in the local folder
+          ./baseline_env/bin/python setup.py build_ext --inplace
+          ./baseline_env/bin/pip install -e .
           ./baseline_env/bin/python validation_implicit.py
 
       - name: 💥 2. Run Pip Upgrade (Modernization Attack)

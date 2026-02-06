@@ -24,7 +24,7 @@ class GeminiClientWrapper:
         return response
 
 AGENT_CONFIG = {
-    "PROJECT_NAME": "Implcit",
+    "PROJECT_NAME": "implcit",
     "IS_INSTALLABLE_PACKAGE": True, 
     "REQUIREMENTS_FILE": "requirements.txt",
     "METRICS_OUTPUT_FILE": "metrics_output.txt",

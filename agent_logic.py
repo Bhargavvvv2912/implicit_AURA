@@ -328,52 +328,26 @@ class DependencyAgent:
         req_path = str(requirements_source.resolve())
         
         # 🚀 PHASE 0: FOUNDATION INJECTION
-        # We install build tools BEFORE touching the requirements file.
-        # This is critical for 'implicit' because it uses scikit-build and cmake.
         print(f"--> Pre-Bootstrap: Injecting build-system foundation (NumPy/Cython/CMake)...")
-        foundation_tools = [
-            "numpy==1.26.4", 
-            "setuptools>=42", 
-            "wheel", 
-            "Cython>=3.0.0", 
-            "scikit-build>=0.13.1", 
-            "cmake>=3.18", 
-            "ninja"
-        ]
-        
-        # We run this as a separate blocking command to 'warm up' the venv
-        _, stderr_foundation, returncode_foundation = run_command(
-            [python_executable, "-m", "pip", "install"] + foundation_tools
-        )
-        
-        if returncode_foundation != 0:
-            print(f"WARNING: Foundation injection failed: {stderr_foundation}")
+        foundation_tools = ["numpy==1.26.4", "setuptools>=42", "wheel", "Cython>=3.0.0", "scikit-build", "cmake", "ninja"]
+        run_command([python_executable, "-m", "pip", "install"] + foundation_tools)
 
         # 📦 PHASE 1: INSTALL DEPENDENCIES
         print(f"--> Bootstrap Step 1: Installing dependencies from '{requirements_source.name}'...")
-        # We use --no-build-isolation because we provided the build tools in Phase 0
-        pip_command_deps = [
-            python_executable, "-m", "pip", "install", 
-            "--no-build-isolation", 
-            "--no-cache-dir", 
-            "-r", req_path
-        ]
-        
+        pip_command_deps = [python_executable, "-m", "pip", "install", "--no-build-isolation", "--no-cache-dir", "-r", req_path]
         _, stderr_deps, returncode_deps = run_command(pip_command_deps)
         if returncode_deps != 0:
             return False, None, f"Failed to install dependencies: {stderr_deps}"
 
-        # 🏗️ PHASE 2: INSTALL LOCAL PROJECT (The Implicit Build)
+        # 🏗️ PHASE 1.5: THE "IN-PLACE" BUILD (The Fix for Repo 29)
+        # This forces the C++/Cython binaries (_als.so) into the local folder
+        print(f"--> Phase 1.5: Forcing In-Place Build of C++ extensions...")
+        run_command([python_executable, "setup.py", "build_ext", "--inplace"])
+
+        # 🏗️ PHASE 2: EDITABLE INSTALL
         if self.config.get("IS_INSTALLABLE_PACKAGE", False):
-            project_extras = self.config.get("PROJECT_EXTRAS", "")
-            print(f"\n--> Bootstrap Step 2: Installing project in editable mode (Triggers C++/CMake build)...")
-            
-            pip_command_project = [
-                python_executable, "-m", "pip", "install", 
-                "--no-build-isolation", 
-                "-e", f".{project_extras}"
-            ]
-            
+            print(f"\n--> Bootstrap Step 2: Installing project in editable mode...")
+            pip_command_project = [python_executable, "-m", "pip", "install", "--no-build-isolation", "-e", "."]
             _, stderr_project, returncode_project = run_command(pip_command_project)
             if returncode_project != 0:
                 return False, None, f"Failed to install project. Error: {stderr_project}"
@@ -384,10 +358,9 @@ class DependencyAgent:
         if not success:
             return False, None, validation_output
             
-        # 🧊 PHASE 4: LOCKFILE GENERATION
+        # 🧊 PHASE 4: FREEZE
         installed_packages_output, _, _ = run_command([python_executable, "-m", "pip", "freeze"])
         final_packages = self._prune_pip_freeze(installed_packages_output)
-        
         return True, {"metrics": metrics, "packages": final_packages}, None
     
     def _try_install_and_validate(self, package_to_update, new_version, dynamic_constraints, baseline_reqs_path, is_probe):
